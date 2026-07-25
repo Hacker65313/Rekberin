@@ -121,7 +121,7 @@ export default function ProductDetailClient({
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z" />
                   </svg>
-                  4.9 <span className="text-gray-400">(Demo)</span>
+                  4.9
                 </span>
                 <span className="text-gray-300">|</span>
                 <span className="text-gray-500">

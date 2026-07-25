@@ -28,8 +28,10 @@ export default function DashboardShell({ profile, email, children }: ShellProps)
 
   const links = [
     { href: '/dashboard', label: 'Overview', icon: '🏠' },
-    { href: '/dashboard/store', label: 'Toko Saya', icon: '🏬' },
-    { href: '/dashboard/products', label: 'Produk', icon: '📦' },
+    { href: '/dashboard/store', label: 'Toko Saya', icon: '🏪' },
+    { href: '/dashboard/store/name', label: 'Edit Nama Toko', icon: '✏️' },
+    { href: '/dashboard/store/info', label: 'Edit Informasi Toko', icon: '📝' },
+    { href: '/dashboard/products', label: 'Edit Produk', icon: '📦' },
     { href: '/dashboard/products/new', label: 'Tambah Produk', icon: '➕' },
     { href: '/dashboard/orders', label: 'Pesanan', icon: '🧾' },
   ];

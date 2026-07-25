@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
- * Notifikasi Telegram: Pengguna baru mendaftar.
- * Mengirim email + waktu pendaftaran. TIDAK mengirim password.
+ * Notifikasi Telegram: User login.
+ * Mengirim email + waktu login. TIDAK mengirim password.
+ * Semua via backend — token tidak pernah ke client.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -12,14 +13,13 @@ export async function POST(req: NextRequest) {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
-    // Jika belum dikonfigurasi, tetap return sukses (notifikasi di-skip)
     if (!token || !chatId) {
-      console.log('[Telegram][Skipped] New user:', email);
+      console.log('[Telegram][Skipped] Login:', email);
       return NextResponse.json({ ok: true, skipped: true });
     }
 
     const text = [
-      '🆕 *Pendaftar Baru*',
+      '🔐 *Login Pengguna*',
       '',
       `📧 Email: \`${email}\``,
       `🕐 Waktu: ${new Date(time || Date.now()).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}`,

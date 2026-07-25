@@ -11,9 +11,11 @@ import { createClient } from '@/lib/supabase/client';
 export default function StoresClient({
   stores,
   initialQuery,
+  activeCategory,
 }: {
   stores: Store[];
   initialQuery: string;
+  activeCategory?: string | null;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -53,8 +55,23 @@ export default function StoresClient({
       <main className="mx-auto max-w-6xl px-4 py-6">
         <h1 className="text-2xl font-bold text-gray-900">Jelajah Toko</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Temukan {stores.length} toko terpercaya di Rekber Market.
+          {activeCategory
+            ? `Menampilkan toko kategori ${activeCategory} (${stores.length} toko).`
+            : `Temukan ${stores.length} toko terpercaya di Rekber Market.`}
         </p>
+
+        {activeCategory && (
+          <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-brand-50 px-4 py-2 text-sm text-brand-700">
+            <span className="font-medium">Kategori: {activeCategory}</span>
+            <button
+              onClick={() => router.push('/stores')}
+              className="ml-1 rounded-full bg-white/60 px-2 text-brand-600 hover:bg-white"
+              aria-label="Hapus filter kategori"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         <form onSubmit={onSearch} className="mt-4 flex gap-2">
           <input

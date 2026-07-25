@@ -20,21 +20,27 @@ Dibuat dengan tema **putih + aksen oranye**, card membulat, shadow lembut, anima
 - Durasi ~3 detik, lalu otomatis ke halaman utama
 
 ### Dashboard Penjual
-- Membuat & mengubah toko (nama, logo, banner, deskripsi, nomor WhatsApp, kota, alamat)
+- Membuat & mengubah toko (nama, logo, banner, deskripsi, nomor WhatsApp, kota, alamat, kategori)
+- Menu edit terpisah: **Edit Nama Toko**, **Edit Informasi Toko**, **Edit Produk**
+- Data pembayaran toko: Bank (BCA, BRI, BNI, Mandiri, CIMB, BTN, Permata, BSI) & E-Wallet (DANA, OVO, GoPay, ShopeePay, LinkAja)
 - Setiap toko punya **link unik** `/store/namatoko`
 - Produk: upload banyak foto, nama, harga, stok, berat, kategori, deskripsi
 - Edit & hapus produk
 - Grid produk modern + skeleton loading
 
 ### Halaman Pembeli
-- Banner toko, logo, nama, rating demo, jumlah produk, produk terbaru
+- Banner toko, logo, nama, rating, jumlah produk, produk terbaru
 - Detail produk: slider foto, harga besar, deskripsi, stok
-- Tombol **Beli Sekarang** & **Chat Penjual** (WhatsApp demo)
+- Tombol **Beli Sekarang** & **Chat Penjual** (WhatsApp)
 
-### Checkout & Pembayaran (Demo)
-- Form: nama penerima, nomor HP, alamat, kota, provinsi, kode pos
-- Ringkasan pesanan
+### Checkout & Pembayaran
+- Form: nama penerima, nomor HP, alamat, provinsi, kota, kecamatan, kode pos
+- Pilihan jasa pengiriman: JNE, J&T Express, J&T Cargo, SiCepat, POS Indonesia, Ninja Express, AnterAja, Lion Parcel, SAP Express, TIKI
+- Ongkir & estimasi dihitung berdasarkan provinsi/kota tujuan
+- Biaya admin dihitung otomatis (2% subtotal, min Rp 2.000, max Rp 10.000)
+- Ringkasan pesanan dengan rincian subtotal, ongkir, biaya admin, total
 - Pilihan pembayaran: **Transfer Bank / QRIS / COD**
+- Jika Transfer Bank: tampilkan info rekening penjual (nama pemilik, bank, nomor rekening, E-Wallet)
 - Status otomatis: **Menunggu Pembayaran**
 - Admin/penjual ubah status: **Lunas → Diproses → Dikirim → Selesai**
 
@@ -44,9 +50,12 @@ Dibuat dengan tema **putih + aksen oranye**, card membulat, shadow lembut, anima
 - Lihat pengguna terbaru
 
 ### Notifikasi Telegram
-- Saat user baru mendaftar: kirim email + waktu
-- Saat pesanan baru: nama toko, nama produk, nominal, status
+- Saat user login: kirim email + waktu login
+- Saat user baru mendaftar: kirim email + waktu pendaftaran
+- Saat toko baru didaftarkan: nama toko, pemilik, email, WhatsApp, kategori, bank, nomor rekening, E-Wallet, nomor E-Wallet, waktu
+- Saat pesanan baru: "Produk Anda telah dipesan" + nama produk + metode pembayaran (Sistem COD / Sistem Transfer) + ajakan cek email
 - **Tidak pernah mengirim password / data sensitif**
+- **Token & chat ID hanya di backend (environment variables), tidak pernah ke client**
 
 ### Lainnya
 - SEO metadata (OG, Twitter card, sitemap-friendly)
@@ -77,12 +86,14 @@ Dibuat dengan tema **putih + aksen oranye**, card membulat, shadow lembut, anima
 │   ├── store/[slug]/           # Halaman toko publik
 │   │   └── [productId]/        # Detail produk + checkout
 │   ├── dashboard/              # Dashboard penjual
-│   │   ├── store/              # Kelola toko
+│   │   ├── store/              # Kelola toko (hub) + create + edit name + edit info
 │   │   ├── products/           # List + new + edit produk
 │   │   └── orders/             # Pesanan toko
 │   ├── admin/                  # Dashboard admin
 │   └── api/
+│       ├── notify/login/       # Telegram: login
 │       ├── notify/register/    # Telegram: user baru
+│       ├── notify/store/       # Telegram: pendaftaran toko
 │       ├── notify/order/       # Telegram: pesanan baru
 │       ├── admin/seed/         # Buat akun admin
 │       └── auth/logout/
@@ -92,7 +103,7 @@ Dibuat dengan tema **putih + aksen oranye**, card membulat, shadow lembut, anima
 │   ├── Navbar.tsx
 │   ├── Footer.tsx
 │   ├── ProductCard.tsx
-│   ├── CheckoutModal.tsx       # Checkout + pembayaran demo
+│   ├── CheckoutModal.tsx       # Checkout + ongkir + jasa pengiriman + pembayaran
 │   ├── ImageUploader.tsx       # Upload ke Supabase Storage
 │   ├── Skeleton.tsx            # Loading skeleton
 │   └── Toast.tsx
@@ -102,7 +113,8 @@ Dibuat dengan tema **putih + aksen oranye**, card membulat, shadow lembut, anima
 │   │   ├── server.ts           # Server client (cookies)
 │   │   └── middleware.ts       # Refresh session
 │   ├── auth.ts
-│   ├── types.ts                # Tipe data
+│   ├── types.ts                # Tipe data + konstanta (kategori, bank, e-wallet, kurir)
+│   ├── shipping.ts            # Data provinsi/kota/kecamatan + hitung ongkir & biaya admin
 │   └── utils.ts                # cn(), formatRupiah, slugify, dll
 ├── supabase/
 │   └── schema.sql              # Skema database lengkap
@@ -166,9 +178,9 @@ Akun admin dengan email `ADMIN_SEED_EMAIL` akan dibuat & role diset jadi `admin`
 1. Buat bot via [@BotFather](https://t.me/BotFather) → dapat **bot token**
 2. Dapatkan **chat ID** Anda: kirim pesan ke bot, lalu akses `https://api.telegram.org/bot<TOKEN>/getUpdates` → ambil `chat.id`
 3. Set `TELEGRAM_BOT_TOKEN` dan `TELEGRAM_CHAT_ID` di `.env.local`
-4. Jika tidak diisi, notifikasi di-skip (mode demo tetap jalan)
+4. Jika tidak diisi, notifikasi di-skip (aplikasi tetap jalan normal)
 
-> Notifikasi yang dikirim: email + waktu pendaftaran (user baru), nama toko + produk + nominal + status (pesanan baru). **Tidak ada password/data sensitif.**
+> Notifikasi yang dikirim: email + waktu login, email + waktu pendaftaran (user baru), data toko lengkap (pendaftaran toko), dan "Produk Anda telah dipesan" + nama produk + metode pembayaran + ajakan cek email (pesanan baru). **Tidak ada password/data sensitif. Token & chat ID hanya di backend.**
 
 ---
 
@@ -217,10 +229,11 @@ Akun admin dengan email `ADMIN_SEED_EMAIL` akan dibuat & role diset jadi `admin`
 
 ## 📝 Catatan
 
-- Semua pembayaran adalah **simulasi demo** — tidak ada integrasi payment gateway sungguhan
-- Rating toko adalah nilai **demo statis** (5.0)
+- Semua pembayaran adalah **simulasi** — tidak ada integrasi payment gateway sungguhan. Transfer bank/E-wallet dilakukan manual ke rekening penjual.
+- Rating toko adalah nilai statis (5.0)
 - Splash screen muncul sekali per session browser (menggunakan `sessionStorage`)
 - Gambar produk disimpan permanen di Supabase Storage
+- Ongkir dihitung berdasarkan zona wilayah (Jakarta, Jawa, Luar Jawa) dengan data provinsi/kota/kecamatan bawaan
 
 ---
 

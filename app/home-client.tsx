@@ -7,15 +7,17 @@ import { ToastProvider } from '@/components/Toast';
 import Link from 'next/link';
 import Image from 'next/image';
 import type { Store, Product } from '@/lib/types';
-import { formatRupiah, slugify } from '@/lib/utils';
+import { formatRupiah, slugify, cn } from '@/lib/utils';
 import ProductCard from '@/components/ProductCard';
 
 export default function HomeClient({
   stores,
   products,
+  activeCategory,
 }: {
   stores: Store[];
   products: (Product & { store?: { slug: string } })[];
+  activeCategory?: string | null;
 }) {
   return (
     <SplashProvider>
@@ -81,28 +83,49 @@ export default function HomeClient({
                 { name: 'Hobi', icon: '🎨' },
                 { name: 'Otomotif', icon: '🚗' },
                 { name: 'Rumah', icon: '🏠' },
-              ].map((c, i) => (
-                <Link
-                  key={i}
-                  href={`/stores?cat=${slugify(c.name)}`}
-                  className="card flex flex-col items-center gap-2 p-3 transition-all hover:-translate-y-1 hover:shadow-glow"
-                >
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-2xl">
-                    {c.icon}
-                  </div>
-                  <span className="text-center text-xs font-medium text-gray-700">{c.name}</span>
-                </Link>
-              ))}
+              ].map((c, i) => {
+                const catSlug = slugify(c.name);
+                const isActive = activeCategory === c.name;
+                return (
+                  <Link
+                    key={i}
+                    href={isActive ? '/' : `/stores?cat=${catSlug}`}
+                    className={cn(
+                      'card flex flex-col items-center gap-2 p-3 transition-all hover:-translate-y-1 hover:shadow-glow',
+                      isActive && 'ring-2 ring-brand-500',
+                    )}
+                  >
+                    <div className={cn(
+                      'flex h-12 w-12 items-center justify-center rounded-2xl text-2xl',
+                      isActive ? 'bg-brand-100' : 'bg-brand-50',
+                    )}>
+                      {c.icon}
+                    </div>
+                    <span className={cn(
+                      'text-center text-xs font-medium',
+                      isActive ? 'text-brand-600' : 'text-gray-700',
+                    )}>{c.name}</span>
+                  </Link>
+                );
+              })}
             </div>
           </section>
 
           {/* Produk terbaru */}
           <section className="mt-10">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-gray-900">Produk Terbaru</h2>
-              <Link href="/stores" className="text-sm font-medium text-brand-600 hover:underline">
-                Lihat semua →
-              </Link>
+              <h2 className="text-lg font-bold text-gray-900">
+                {activeCategory ? `Produk Kategori ${activeCategory}` : 'Produk Terbaru'}
+              </h2>
+              {activeCategory ? (
+                <Link href="/" className="text-sm font-medium text-brand-600 hover:underline">
+                  Lihat semua →
+                </Link>
+              ) : (
+                <Link href="/stores" className="text-sm font-medium text-brand-600 hover:underline">
+                  Lihat semua →
+                </Link>
+              )}
             </div>
             {products.length === 0 ? (
               <div className="card flex flex-col items-center justify-center p-12 text-center">

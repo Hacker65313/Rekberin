@@ -29,7 +29,7 @@ export default function Footer() {
               <li>Buat Toko Online</li>
               <li>Kelola Produk</li>
               <li>Checkout Mudah</li>
-              <li>Pembayaran Demo</li>
+              <li>Pembayaran Aman</li>
             </ul>
           </div>
           <div>

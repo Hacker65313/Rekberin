@@ -64,7 +64,6 @@ export default function StoreClient({
                     <path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z" />
                   </svg>
                   {store.rating?.toFixed(1) || '5.0'}
-                  <span className="text-gray-400">(Demo)</span>
                 </span>
                 <span className="flex items-center gap-1">
                   <span className="font-bold text-brand-600">{products.length}</span> produk

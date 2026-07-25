@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { slugify, cn } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import ImageUploader from '@/components/ImageUploader';
 import { useToast } from '@/components/Toast';
 import {
@@ -15,116 +15,52 @@ import {
   EWALLETS,
 } from '@/lib/types';
 
-interface Props {
-  store: Store | null;
-  ownerId: string;
-  ownerEmail?: string;
-}
-
-export default function StoreForm({ store, ownerId, ownerEmail }: Props) {
-  const isEdit = !!store;
+export default function InfoForm({ store }: { store: Store }) {
   const router = useRouter();
   const { push } = useToast();
 
-  const [name, setName] = useState(store?.name || '');
-  const [description, setDescription] = useState(store?.description || '');
-  const [logo, setLogo] = useState<string[]>(store?.logo_url ? [store.logo_url] : []);
-  const [banner, setBanner] = useState<string[]>(store?.banner_url ? [store.banner_url] : []);
-  const [whatsapp, setWhatsapp] = useState(store?.whatsapp || '');
-  const [city, setCity] = useState(store?.city || '');
-  const [address, setAddress] = useState(store?.address || '');
+  const [description, setDescription] = useState(store.description || '');
+  const [logo, setLogo] = useState<string[]>(store.logo_url ? [store.logo_url] : []);
+  const [banner, setBanner] = useState<string[]>(store.banner_url ? [store.banner_url] : []);
+  const [whatsapp, setWhatsapp] = useState(store.whatsapp || '');
+  const [city, setCity] = useState(store.city || '');
+  const [address, setAddress] = useState(store.address || '');
   const [category, setCategory] = useState<StoreCategory>(
-    (store?.category as StoreCategory) || 'Lainnya',
+    (store.category as StoreCategory) || 'Lainnya',
   );
-  const [bankName, setBankName] = useState(store?.bank_name || '');
-  const [bankAccountName, setBankAccountName] = useState(store?.bank_account_name || '');
-  const [bankAccountNumber, setBankAccountNumber] = useState(store?.bank_account_number || '');
-  const [ewalletName, setEwalletName] = useState(store?.ewallet_name || '');
-  const [ewalletNumber, setEwalletNumber] = useState(store?.ewallet_number || '');
+  const [bankName, setBankName] = useState(store.bank_name || '');
+  const [bankAccountName, setBankAccountName] = useState(store.bank_account_name || '');
+  const [bankAccountNumber, setBankAccountNumber] = useState(store.bank_account_number || '');
+  const [ewalletName, setEwalletName] = useState(store.ewallet_name || '');
+  const [ewalletNumber, setEwalletNumber] = useState(store.ewallet_number || '');
   const [saving, setSaving] = useState(false);
-
-  const slug = slugify(name);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      push('Nama toko wajib diisi', 'error');
-      return;
-    }
     setSaving(true);
     try {
       const supabase = createClient();
-      const payload = {
-        owner_id: ownerId,
-        name: name.trim(),
-        slug,
-        description,
-        logo_url: logo[0] || null,
-        banner_url: banner[0] || null,
-        whatsapp,
-        city,
-        address,
-        category,
-        bank_name: bankName || null,
-        bank_account_name: bankAccountName || null,
-        bank_account_number: bankAccountNumber || null,
-        ewallet_name: ewalletName || null,
-        ewallet_number: ewalletNumber || null,
-      };
-
-      if (isEdit && store) {
-        const { error } = await supabase
-          .from('stores')
-          .update(payload)
-          .eq('id', store.id);
-        if (error) throw error;
-        push('Toko berhasil diperbarui', 'success');
-        router.refresh();
-      } else {
-        const { data: existing } = await supabase
-          .from('stores')
-          .select('id')
-          .eq('slug', slug)
-          .maybeSingle();
-        if (existing) {
-          push('Slug toko sudah dipakai, ubah nama toko', 'error');
-          setSaving(false);
-          return;
-        }
-        const { data, error } = await supabase
-          .from('stores')
-          .insert({ ...payload, rating: 5.0 })
-          .select()
-          .single();
-        if (error) throw error;
-
-        // Kirim notifikasi Telegram pendaftaran toko (backend, tanpa token ke client)
-        try {
-          await fetch('/api/notify/store', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              storeName: name.trim(),
-              ownerName: bankAccountName || ownerEmail || '-',
-              email: ownerEmail || '-',
-              whatsapp,
-              category,
-              bankName,
-              bankAccountNumber,
-              ewalletName,
-              ewalletNumber,
-              time: new Date().toISOString(),
-            }),
-          });
-        } catch {
-          // opsional, jangan blokir
-        }
-
-        push('Toko berhasil dibuat! Mengalihkan ke halaman toko… 🎉', 'success');
-        // Redirect otomatis ke halaman toko yang baru dibuat
-        router.push(`/store/${slug}`);
-        router.refresh();
-      }
+      const { error } = await supabase
+        .from('stores')
+        .update({
+          description,
+          logo_url: logo[0] || null,
+          banner_url: banner[0] || null,
+          whatsapp,
+          city,
+          address,
+          category,
+          bank_name: bankName || null,
+          bank_account_name: bankAccountName || null,
+          bank_account_number: bankAccountNumber || null,
+          ewallet_name: ewalletName || null,
+          ewallet_number: ewalletNumber || null,
+        })
+        .eq('id', store.id);
+      if (error) throw error;
+      push('Informasi toko berhasil diperbarui!', 'success');
+      router.push('/dashboard/store');
+      router.refresh();
     } catch (err: any) {
       push(err?.message || 'Gagal menyimpan', 'error');
     } finally {
@@ -134,50 +70,25 @@ export default function StoreForm({ store, ownerId, ownerEmail }: Props) {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {isEdit ? 'Kelola Toko' : 'Buat Toko Baru'}
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {isEdit
-              ? 'Perbarui informasi toko Anda.'
-              : 'Lengkapi informasi toko untuk mulai berjualan.'}
-          </p>
-        </div>
-        {isEdit && (
-          <Link
-            href={`/store/${slug}`}
-            target="_blank"
-            className="btn-outline text-xs"
-          >
-            Lihat Toko ↗
-          </Link>
-        )}
-      </div>
-
-      {/* Preview link unik */}
-      {slug && (
-        <div className="mt-4 flex items-center gap-2 rounded-2xl bg-brand-50 px-4 py-3 text-sm text-brand-700">
-          <span className="font-medium">Link toko:</span>
-          <code className="rounded-lg bg-white px-2 py-0.5 text-brand-600">
-            /store/{slug}
-          </code>
-        </div>
-      )}
+      <Link href="/dashboard/store" className="btn-ghost mb-4 px-3 py-1.5 text-xs">
+        ← Kembali ke Toko Saya
+      </Link>
+      <h1 className="text-2xl font-bold text-gray-900">Edit Informasi Toko</h1>
+      <p className="mt-1 text-sm text-gray-500">
+        Nama toko tidak bisa diubah di sini. Untuk mengubah nama, gunakan menu Edit Nama Toko.
+      </p>
 
       <form onSubmit={handleSubmit} className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Kolom kiri - Info dasar */}
         <div className="card space-y-4 p-5">
           <div>
-            <label className="label">Nama Toko</label>
-            <input
-              className="input"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Contoh: Toko Sehat Jaya"
-              required
-            />
+            <label className="label">Nama Toko (tidak bisa diubah di sini)</label>
+            <input className="input bg-gray-50" value={store.name} disabled />
+            <p className="mt-1 text-xs text-gray-400">
+              <Link href="/dashboard/store/name" className="text-brand-600 hover:underline">
+                Klik di sini untuk mengubah nama toko →
+              </Link>
+            </p>
           </div>
           <div>
             <label className="label">Deskripsi Toko</label>
@@ -236,7 +147,7 @@ export default function StoreForm({ store, ownerId, ownerEmail }: Props) {
           <div className="card p-5">
             <ImageUploader
               bucket="stores"
-              folder={`store-${slug || 'tmp'}/logo`}
+              folder={`store-${store.slug}/logo`}
               multiple={false}
               max={1}
               value={logo}
@@ -247,7 +158,7 @@ export default function StoreForm({ store, ownerId, ownerEmail }: Props) {
           <div className="card p-5">
             <ImageUploader
               bucket="stores"
-              folder={`store-${slug || 'tmp'}/banner`}
+              folder={`store-${store.slug}/banner`}
               multiple={false}
               max={1}
               value={banner}
@@ -340,11 +251,7 @@ export default function StoreForm({ store, ownerId, ownerEmail }: Props) {
               <svg className="h-5 w-5 animate-spin-slow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 12a9 9 0 1 1-6.2-8.5" />
               </svg>
-            ) : isEdit ? (
-              'Simpan Perubahan'
-            ) : (
-              'Buat Toko'
-            )}
+            ) : 'Simpan Informasi'}
           </button>
         </div>
       </form>

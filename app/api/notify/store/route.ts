@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
- * Notifikasi Telegram: Pesanan baru untuk penjual.
- * Mengirim: "Produk Anda telah dipesan" + nama produk + metode pembayaran
- * (Sistem COD / Sistem Transfer) + ajakan cek email.
+ * Notifikasi Telegram: Pendaftaran toko baru.
+ * Mengirim: nama toko, nama pemilik, email, WhatsApp, kategori,
+ * bank, nomor rekening, E-Wallet, nomor E-Wallet, waktu.
  * TIDAK mengirim data sensitif (password dll).
  * Semua via backend — token tidak pernah ke client.
  */
@@ -11,38 +11,42 @@ export async function POST(req: NextRequest) {
   try {
     const {
       storeName,
-      productName,
-      amount,
-      status,
-      paymentMethod,
-      courier,
-      shippingCost,
-      adminFee,
+      ownerName,
+      email,
+      whatsapp,
+      category,
+      bankName,
+      bankAccountNumber,
+      ewalletName,
+      ewalletNumber,
+      time,
     } = await req.json();
+
+    if (!storeName) {
+      return NextResponse.json({ ok: false }, { status: 400 });
+    }
 
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
     if (!token || !chatId) {
-      console.log('[Telegram][Skipped] New order:', storeName, productName, amount);
+      console.log('[Telegram][Skipped] Store registration:', storeName);
       return NextResponse.json({ ok: true, skipped: true });
     }
 
     const esc = (v: unknown) => (v || '-').toString().replace(/[\\*_`]/g, ' ');
 
     const text = [
-      '🛒 *Produk Anda Telah Dipesan*',
+      '🏪 *Pendaftaran Toko Baru*',
       '',
-      `🏪 Toko: ${esc(storeName)}`,
-      `📦 Produk: ${esc(productName)}`,
-      `💳 Metode Pembayaran: ${esc(paymentMethod)}`,
-      `🚚 Kurir: ${esc(courier)}`,
-      `💸 Ongkir: Rp ${Number(shippingCost || 0).toLocaleString('id-ID')}`,
-      `🧾 Biaya Admin: Rp ${Number(adminFee || 0).toLocaleString('id-ID')}`,
-      `💰 Nominal: Rp ${Number(amount || 0).toLocaleString('id-ID')}`,
-      `📍 Status: ${esc(status)}`,
-      '',
-      '✉️ Silakan cek email Anda untuk melanjutkan transaksi.',
+      `🏷️ Nama Toko: ${esc(storeName)}`,
+      `👤 Pemilik: ${esc(ownerName)}`,
+      `📧 Email: ${esc(email)}`,
+      `💬 WhatsApp: ${esc(whatsapp)}`,
+      `📂 Kategori: ${esc(category)}`,
+      `🏦 Bank: ${esc(bankName)} (${esc(bankAccountNumber)})`,
+      `📱 E-Wallet: ${esc(ewalletName)} (${esc(ewalletNumber)})`,
+      `🕐 Waktu: ${new Date(time || Date.now()).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}`,
       '',
       '— Rekber Market Bot',
     ].join('\n');

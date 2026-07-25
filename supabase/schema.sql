@@ -1,6 +1,8 @@
 -- ============================================================
---  REKBER MARKETPLACE - SUPABASE SCHEMA
+--  REKBER MARKETPLACE - SUPABASE SCHEMA (v2)
 --  Jalankan seluruh SQL ini di SQL Editor Supabase Anda.
+--  Jika sudah punya schema v1, jalankan bagian ALTER untuk
+--  menambah kolom baru.
 -- ============================================================
 
 -- ============================================================
@@ -15,7 +17,6 @@ create table if not exists public.profiles (
 
 alter table public.profiles enable row level security;
 
--- Policy: user bisa baca profile sendiri
 create policy "Public profiles are viewable by everyone"
   on public.profiles for select
   using ( true );
@@ -47,7 +48,7 @@ create trigger on_auth_user_created
   for each row execute procedure public.handle_new_user();
 
 -- ============================================================
--- 2. STORES TABLE
+-- 2. STORES TABLE (dengan kategori & data pembayaran)
 -- ============================================================
 create table if not exists public.stores (
   id uuid primary key default gen_random_uuid(),
@@ -60,9 +61,38 @@ create table if not exists public.stores (
   whatsapp text,
   city text,
   address text,
+  category text not null default 'Lainnya',
+  bank_name text,
+  bank_account_name text,
+  bank_account_number text,
+  ewallet_name text,
+  ewallet_number text,
   rating numeric(2,1) not null default 5.0,
   created_at timestamptz not null default now()
 );
+
+-- ALTER: tambah kolom baru jika tabel sudah ada (untuk upgrade dari v1)
+do $$
+begin
+  if not exists (select 1 from information_schema.columns where table_name='stores' and column_name='category') then
+    alter table public.stores add column category text not null default 'Lainnya';
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name='stores' and column_name='bank_name') then
+    alter table public.stores add column bank_name text;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name='stores' and column_name='bank_account_name') then
+    alter table public.stores add column bank_account_name text;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name='stores' and column_name='bank_account_number') then
+    alter table public.stores add column bank_account_number text;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name='stores' and column_name='ewallet_name') then
+    alter table public.stores add column ewallet_name text;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name='stores' and column_name='ewallet_number') then
+    alter table public.stores add column ewallet_number text;
+  end if;
+end$$;
 
 alter table public.stores enable row level security;
 
@@ -104,7 +134,6 @@ create policy "Owner can manage own products"
     )
   );
 
--- Admin bisa manage semua produk
 create policy "Admin can manage all products"
   on public.products for all
   using (
@@ -115,7 +144,7 @@ create policy "Admin can manage all products"
   );
 
 -- ============================================================
--- 4. ORDERS TABLE
+-- 4. ORDERS TABLE (dengan jasa pengiriman, ongkir, biaya admin)
 -- ============================================================
 create table if not exists public.orders (
   id uuid primary key default gen_random_uuid(),
@@ -125,14 +154,30 @@ create table if not exists public.orders (
   quantity int not null default 1,
   total_amount bigint not null default 0,
   payment_method text not null default 'transfer_bank' check (payment_method in ('transfer_bank','qris','cod')),
+  shipping_courier text,
+  shipping_cost bigint not null default 0,
+  admin_fee bigint not null default 0,
   status text not null default 'menunggu_pembayaran' check (status in ('menunggu_pembayaran','lunas','diproses','dikirim','selesai')),
   shipping_address jsonb not null,
   created_at timestamptz not null default now()
 );
 
+-- ALTER: tambah kolom baru jika tabel sudah ada (untuk upgrade dari v1)
+do $$
+begin
+  if not exists (select 1 from information_schema.columns where table_name='orders' and column_name='shipping_courier') then
+    alter table public.orders add column shipping_courier text;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name='orders' and column_name='shipping_cost') then
+    alter table public.orders add column shipping_cost bigint not null default 0;
+  end if;
+  if not exists (select 1 from information_schema.columns where table_name='orders' and column_name='admin_fee') then
+    alter table public.orders add column admin_fee bigint not null default 0;
+  end if;
+end$$;
+
 alter table public.orders enable row level security;
 
--- Buyer bisa lihat order sendiri, seller bisa lihat order tokonya, admin lihat semua
 create policy "Buyers can view own orders"
   on public.orders for select
   using ( auth.uid() = buyer_id );
@@ -156,12 +201,10 @@ create policy "Admins can view all orders"
     )
   );
 
--- Anyone (termasuk guest checkout) bisa insert order
 create policy "Anyone can create order"
   on public.orders for insert
   with check (true);
 
--- Admin & seller bisa update status
 create policy "Sellers can update own store orders"
   on public.orders for update
   using (
@@ -184,15 +227,12 @@ create policy "Admins can update all orders"
 -- ============================================================
 -- 5. STORAGE BUCKET
 -- ============================================================
--- Bucket 'products' untuk gambar produk & 'stores' untuk logo/banner toko
 insert into storage.buckets (id, name, public) values ('products','products',true) on conflict (id) do nothing;
 insert into storage.buckets (id, name, public) values ('stores','stores',true) on conflict (id) do nothing;
 
--- Policy storage: public read
 create policy "Public read storage" on storage.objects for select
   using ( bucket_id in ('products','stores') );
 
--- Policy storage: hanya user ter-auth yang upload
 create policy "Auth users can upload" on storage.objects for insert
   with check ( auth.role() = 'authenticated' );
 
@@ -205,6 +245,6 @@ create policy "Auth users can delete own" on storage.objects for delete
 -- ============================================================
 -- 6. SEED ADMIN (opsional, jalankan manual dengan email Anda)
 -- ============================================================
--- Catatan: Admin dibuat melalui endpoint /admin/seed di Next.js
+-- Catatan: Admin dibuat melalui endpoint /api/admin/seed di Next.js
 -- (menggunakan env ADMIN_SEED_EMAIL & ADMIN_SEED_PASSWORD)
 -- agar password di-hash oleh Supabase Auth.

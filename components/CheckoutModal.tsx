@@ -1,27 +1,29 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
-import type { Store, Product, ShippingAddress, PaymentMethod, OrderStatus } from '@/lib/types';
+import type { Store, Product, ShippingAddress, PaymentMethod, OrderStatus, ShippingCourier } from '@/lib/types';
+import { COURIERS } from '@/lib/types';
 import { createClient } from '@/lib/supabase/client';
 import { formatRupiah, cn } from '@/lib/utils';
 import { useToast } from '@/components/Toast';
+import {
+  PROVINCES,
+  PROVINCE_NAMES,
+  getCitiesForProvince,
+  getDistrictsForCity,
+  calculateShipping,
+  calculateAdminFee,
+  formatEstDays,
+} from '@/lib/shipping';
 
 type Step = 'form' | 'summary' | 'payment' | 'success';
 
 const PAYMENT_METHODS: { id: PaymentMethod; label: string; icon: string; desc: string }[] = [
-  { id: 'transfer_bank', label: 'Transfer Bank', icon: '🏦', desc: 'BCA / Mandiri / BNI / BRI' },
+  { id: 'transfer_bank', label: 'Transfer Bank', icon: '🏦', desc: 'Transfer ke rekening penjual' },
   { id: 'qris', label: 'QRIS', icon: '📱', desc: 'Scan & bayar via QRIS' },
   { id: 'cod', label: 'COD', icon: '🚚', desc: 'Bayar di tempat (COD)' },
-];
-
-const PROVINCES = [
-  'DKI Jakarta', 'Jawa Barat', 'Jawa Tengah', 'Jawa Timur', 'Banten',
-  'Bali', 'Sumatera Utara', 'Sumatera Barat', 'Riau', 'Sumatera Selatan',
-  'Lampung', 'Kalimantan Timur', 'Kalimantan Barat', 'Sulawesi Utara',
-  'Sulawesi Selatan', 'Papua', 'Nusa Tenggara Barat', 'Nusa Tenggara Timur',
-  'Lainnya',
 ];
 
 const empty: ShippingAddress = {
@@ -30,6 +32,7 @@ const empty: ShippingAddress = {
   address: '',
   city: '',
   province: 'DKI Jakarta',
+  district: '',
   postal_code: '',
 };
 
@@ -47,22 +50,45 @@ export default function CheckoutModal({
   const [addr, setAddr] = useState<ShippingAddress>(empty);
   const [qty, setQty] = useState(1);
   const [method, setMethod] = useState<PaymentMethod>('transfer_bank');
+  const [courier, setCourier] = useState<ShippingCourier | ''>('');
   const [submitting, setSubmitting] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
 
-  const total = product.price * qty;
+  const subtotal = product.price * qty;
+
+  // Hitung ongkir & estimasi berdasarkan provinsi/kota yang dipilih
+  const shipping = useMemo(() => {
+    if (!addr.province || !addr.city) return null;
+    return calculateShipping(addr.province, addr.city, product.weight * qty);
+  }, [addr.province, addr.city, product.weight, qty]);
+
+  const adminFee = useMemo(() => calculateAdminFee(subtotal), [subtotal]);
+  const shippingCost = shipping?.cost || 0;
+  const total = subtotal + shippingCost + adminFee;
+
+  const cities = addr.province ? getCitiesForProvince(addr.province).map((c) => c.name) : [];
+  const districts = addr.province && addr.city ? getDistrictsForCity(addr.province, addr.city) : [];
 
   const update =
     (k: keyof ShippingAddress) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-      setAddr((a) => ({ ...a, [k]: e.target.value }));
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+      const val = e.target.value;
+      setAddr((a) => {
+        if (k === 'province') return { ...a, province: val, city: '', district: '' };
+        if (k === 'city') return { ...a, city: val, district: '' };
+        return { ...a, [k]: val };
+      });
+    };
 
   const validateForm = (): boolean => {
     if (!addr.receiver_name.trim()) { push('Nama penerima wajib diisi', 'error'); return false; }
     if (!/^[0-9+\-\s]{8,15}$/.test(addr.phone)) { push('Nomor HP tidak valid', 'error'); return false; }
     if (!addr.address.trim()) { push('Alamat wajib diisi', 'error'); return false; }
-    if (!addr.city.trim()) { push('Kota wajib diisi', 'error'); return false; }
+    if (!addr.province) { push('Provinsi wajib dipilih', 'error'); return false; }
+    if (!addr.city) { push('Kota wajib dipilih', 'error'); return false; }
+    if (!addr.district) { push('Kecamatan wajib dipilih', 'error'); return false; }
     if (!addr.postal_code.trim()) { push('Kode pos wajib diisi', 'error'); return false; }
+    if (!courier) { push('Jasa pengiriman wajib dipilih', 'error'); return false; }
     return true;
   };
 
@@ -71,11 +97,13 @@ export default function CheckoutModal({
     if (validateForm()) setStep('summary');
   };
 
+  const paymentLabel = (m: PaymentMethod) =>
+    m === 'cod' ? 'Sistem COD' : 'Sistem Transfer';
+
   const placeOrder = async () => {
     setSubmitting(true);
     try {
       const supabase = createClient();
-      // Ambil user bila login (guest checkout tetap diperbolehkan)
       const { data: { user } } = await supabase.auth.getUser();
 
       const { data, error } = await supabase
@@ -87,6 +115,9 @@ export default function CheckoutModal({
           quantity: qty,
           total_amount: total,
           payment_method: method,
+          shipping_courier: courier,
+          shipping_cost: shippingCost,
+          admin_fee: adminFee,
           status: 'menunggu_pembayaran' as OrderStatus,
           shipping_address: addr,
         })
@@ -96,7 +127,7 @@ export default function CheckoutModal({
       if (error) throw error;
       setOrderId(data.id);
 
-      // Kirim notifikasi Telegram (no password)
+      // Kirim notifikasi ke penjual (Telegram, via backend)
       try {
         await fetch('/api/notify/order', {
           method: 'POST',
@@ -106,6 +137,10 @@ export default function CheckoutModal({
             productName: product.name,
             amount: total,
             status: 'menunggu_pembayaran',
+            paymentMethod: paymentLabel(method),
+            courier,
+            shippingCost,
+            adminFee,
           }),
         });
       } catch {
@@ -113,7 +148,7 @@ export default function CheckoutModal({
       }
 
       setStep('success');
-      push('Pesanan dibuat!', 'success');
+      push('Pesanan dibuat! Penjual telah diberi notifikasi.', 'success');
     } catch (err: any) {
       push(err?.message || 'Gagal membuat pesanan', 'error');
     } finally {
@@ -142,7 +177,7 @@ export default function CheckoutModal({
           <h2 className="text-lg font-bold text-gray-900">
             {step === 'form' && 'Checkout'}
             {step === 'summary' && 'Ringkasan Pesanan'}
-            {step === 'payment' && 'Pembayaran (Demo)'}
+            {step === 'payment' && 'Pembayaran'}
             {step === 'success' && 'Pesanan Dibuat!'}
           </h2>
           <button onClick={onClose} className="rounded-full p-2 text-gray-400 hover:bg-gray-100">
@@ -167,7 +202,7 @@ export default function CheckoutModal({
               <p className="text-xs text-gray-500">{formatRupiah(product.price)} × {qty}</p>
             </div>
             <div className="text-right">
-              <div className="text-base font-bold text-brand-600">{formatRupiah(total)}</div>
+              <div className="text-base font-bold text-brand-600">{formatRupiah(subtotal)}</div>
             </div>
           </div>
         )}
@@ -206,24 +241,59 @@ export default function CheckoutModal({
             </div>
             <div>
               <label className="label">Alamat Lengkap</label>
-              <textarea className="input min-h-20" value={addr.address} onChange={update('address')} placeholder="Jalan, RT/RW, Kelurahan, Kecamatan" required />
+              <textarea className="input min-h-20" value={addr.address} onChange={update('address')} placeholder="Jalan, RT/RW, Kelurahan, Nomor rumah" required />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+
+            {/* Provinsi → Kota → Kecamatan */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div>
+                <label className="label">Provinsi</label>
+                <select className="input" value={addr.province} onChange={update('province')} required>
+                  {PROVINCE_NAMES.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
               <div>
                 <label className="label">Kota</label>
-                <input className="input" value={addr.city} onChange={update('city')} placeholder="Jakarta Selatan" required />
+                <select className="input" value={addr.city} onChange={update('city')} required disabled={!cities.length}>
+                  <option value="">{cities.length ? 'Pilih kota…' : 'Pilih provinsi dulu'}</option>
+                  {cities.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
               </div>
               <div>
-                <label className="label">Kode Pos</label>
-                <input className="input" value={addr.postal_code} onChange={update('postal_code')} placeholder="12345" required />
+                <label className="label">Kecamatan</label>
+                <select className="input" value={addr.district} onChange={update('district')} required disabled={!districts.length}>
+                  <option value="">{districts.length ? 'Pilih kecamatan…' : 'Pilih kota dulu'}</option>
+                  {districts.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
               </div>
             </div>
+
             <div>
-              <label className="label">Provinsi</label>
-              <select className="input" value={addr.province} onChange={update('province')}>
-                {PROVINCES.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
+              <label className="label">Kode Pos</label>
+              <input className="input" value={addr.postal_code} onChange={update('postal_code')} placeholder="12345" required inputMode="numeric" />
             </div>
+
+            {/* Jasa Pengiriman */}
+            <div>
+              <label className="label">Jasa Pengiriman <span className="text-red-500">*</span></label>
+              <div className="grid grid-cols-2 gap-2">
+                {COURIERS.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setCourier(c.id)}
+                    className={cn(
+                      'flex items-center gap-2 rounded-xl border-2 p-2.5 text-left text-xs transition-all',
+                      courier === c.id ? 'border-brand-500 bg-brand-50' : 'border-gray-200 hover:border-gray-300',
+                    )}
+                  >
+                    <span className="text-lg">{c.icon}</span>
+                    <span className={cn('font-medium', courier === c.id ? 'text-brand-600' : 'text-gray-700')}>{c.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div>
               <label className="label">Jumlah</label>
               <div className="flex items-center gap-3">
@@ -241,6 +311,20 @@ export default function CheckoutModal({
                 <span className="ml-2 text-xs text-gray-400">stok: {product.stock}</span>
               </div>
             </div>
+
+            {shipping && courier && (
+              <div className="rounded-2xl bg-emerald-50 p-3 text-xs text-emerald-700">
+                <div className="flex justify-between">
+                  <span>Ongkir ke {addr.city}</span>
+                  <span className="font-semibold">{formatRupiah(shippingCost)}</span>
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span>Estimasi</span>
+                  <span className="font-semibold">{formatEstDays(shipping.estDays)}</span>
+                </div>
+              </div>
+            )}
+
             <button type="submit" className="btn-primary w-full">Lanjut ke Ringkasan</button>
           </form>
         )}
@@ -253,11 +337,20 @@ export default function CheckoutModal({
               <p className="text-gray-600">{addr.receiver_name}</p>
               <p className="text-gray-600">{addr.phone}</p>
               <p className="text-gray-600">{addr.address}</p>
-              <p className="text-gray-600">{addr.city}, {addr.province} {addr.postal_code}</p>
+              <p className="text-gray-600">{addr.district}, {addr.city}, {addr.province} {addr.postal_code}</p>
+            </div>
+            <div className="rounded-2xl bg-gray-50 p-4 text-sm">
+              <h3 className="mb-2 font-semibold text-gray-800">Jasa Pengiriman</h3>
+              <p className="text-gray-600">
+                {COURIERS.find((c) => c.id === courier)?.icon}{' '}
+                {COURIERS.find((c) => c.id === courier)?.name}
+                {shipping && <span className="text-gray-400"> · {formatEstDays(shipping.estDays)}</span>}
+              </p>
             </div>
             <div className="space-y-2 rounded-2xl border border-gray-100 p-4 text-sm">
-              <Row label={`Subtotal (${qty}x)`} value={formatRupiah(total)} />
-              <Row label="Ongkir" value="Gratis (Demo)" />
+              <Row label={`Subtotal (${qty}x)`} value={formatRupiah(subtotal)} />
+              <Row label="Ongkir" value={formatRupiah(shippingCost)} />
+              <Row label="Biaya Admin" value={formatRupiah(adminFee)} />
               <div className="border-t border-gray-100 pt-2">
                 <Row label="Total" value={formatRupiah(total)} bold />
               </div>
@@ -272,7 +365,7 @@ export default function CheckoutModal({
         {/* STEP 3: Payment */}
         {step === 'payment' && (
           <div className="space-y-4">
-            <p className="text-xs text-gray-500">Pilih metode pembayaran (simulasi):</p>
+            <p className="text-xs text-gray-500">Pilih metode pembayaran:</p>
             <div className="space-y-2">
               {PAYMENT_METHODS.map((m) => (
                 <button
@@ -298,9 +391,38 @@ export default function CheckoutModal({
                 </button>
               ))}
             </div>
+
+            {/* Tampilkan info rekening penjual jika Transfer Bank dipilih */}
+            {method === 'transfer_bank' && (store.bank_name || store.ewallet_name) && (
+              <div className="rounded-2xl border border-brand-200 bg-brand-50/50 p-4 text-sm">
+                <h4 className="mb-2 font-semibold text-brand-700">📋 Informasi Pembayaran Penjual</h4>
+                {store.bank_name && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-gray-500 uppercase">Transfer Bank</p>
+                    <div className="flex justify-between"><span className="text-gray-600">Nama Pemilik Rekening</span><span className="font-semibold text-gray-800">{store.bank_account_name || '-'}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-600">Nama Bank</span><span className="font-semibold text-gray-800">{store.bank_name}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-600">Nomor Rekening</span><span className="font-mono font-semibold text-brand-600">{store.bank_account_number || '-'}</span></div>
+                  </div>
+                )}
+                {store.ewallet_name && (
+                  <div className="mt-3 space-y-1 border-t border-brand-100 pt-3">
+                    <p className="text-xs font-medium text-gray-500 uppercase">E-Wallet</p>
+                    <div className="flex justify-between"><span className="text-gray-600">Nama E-Wallet</span><span className="font-semibold text-gray-800">{store.ewallet_name}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-600">Nomor E-Wallet</span><span className="font-mono font-semibold text-brand-600">{store.ewallet_number || '-'}</span></div>
+                  </div>
+                )}
+                <p className="mt-3 text-xs text-gray-500">
+                  Silakan transfer ke rekening di atas, lalu hubungi penjual untuk konfirmasi pembayaran.
+                </p>
+              </div>
+            )}
+
             <div className="rounded-2xl bg-brand-50 p-4 text-center">
               <div className="text-xs text-gray-500">Total Pembayaran</div>
               <div className="text-2xl font-bold text-brand-600">{formatRupiah(total)}</div>
+              <div className="mt-1 text-xs text-gray-400">
+                Termasuk ongkir {formatRupiah(shippingCost)} + biaya admin {formatRupiah(adminFee)}
+              </div>
             </div>
             <div className="flex gap-3">
               <button onClick={() => setStep('summary')} className="btn-outline flex-1">Kembali</button>
@@ -331,6 +453,13 @@ export default function CheckoutModal({
             <h3 className="mt-4 text-xl font-bold text-gray-900">Pesanan Dibuat!</h3>
             <p className="mt-2 text-sm text-gray-500">
               Status pesanan: <span className="font-semibold text-amber-600">Menunggu Pembayaran</span>
+            </p>
+            <p className="mt-2 text-sm text-gray-600">
+              Produk <span className="font-semibold text-gray-800">{product.name}</span> telah dipesan.
+              Metode pembayaran: <span className="font-semibold">{paymentLabel(method)}</span>.
+            </p>
+            <p className="mt-2 text-sm text-gray-500">
+              Silakan cek email Anda untuk melanjutkan transaksi.
             </p>
             {orderId && (
               <p className="mt-2 text-xs text-gray-400">ID: <code>{orderId.slice(0, 8)}</code></p>

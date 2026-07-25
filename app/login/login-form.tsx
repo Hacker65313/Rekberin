@@ -43,6 +43,21 @@ function InnerForm({ redirectTo }: { redirectTo?: string }) {
       });
       if (error) throw error;
       push('Berhasil masuk!', 'success');
+
+      // Kirim notifikasi Telegram login (backend, tanpa data sensitif)
+      try {
+        await fetch('/api/notify/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: email.trim(),
+            time: new Date().toISOString(),
+          }),
+        });
+      } catch {
+        // opsional, jangan blokir login
+      }
+
       router.push(redirectTo || '/dashboard');
       router.refresh();
     } catch (error: any) {

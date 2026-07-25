@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import StoreManageClient from './store-manage-client';
 import StoreForm from './store-form';
 import type { Store } from '@/lib/types';
 
@@ -17,5 +18,22 @@ export default async function StorePage() {
     .eq('owner_id', user.id)
     .maybeSingle();
 
-  return <StoreForm store={(store as Store) || null} ownerId={user.id} />;
+  // Jika belum punya toko, tampilkan form pembuatan toko
+  if (!store) {
+    return <StoreForm store={null} ownerId={user.id} ownerEmail={user.email || undefined} />;
+  }
+
+  // Hitung jumlah produk & pesanan toko ini
+  const [{ count: productCount }, { count: ordersCount }] = await Promise.all([
+    supabase.from('products').select('*', { count: 'exact', head: true }).eq('store_id', store.id),
+    supabase.from('orders').select('*', { count: 'exact', head: true }).eq('store_id', store.id),
+  ]);
+
+  return (
+    <StoreManageClient
+      store={store as Store}
+      productCount={productCount || 0}
+      ordersCount={ordersCount || 0}
+    />
+  );
 }
