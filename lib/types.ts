@@ -56,8 +56,9 @@ export interface Product {
 }
 
 export type OrderStatus =
-  | 'menunggu_pembayaran'
-  | 'lunas'
+  | 'menunggu_pembayaran'          // COD mulai? TIDAK — COD mulai dari menunggu_konfirmasi_seller
+  | 'pembayaran_dikonfirmasi'      // Transfer/QRIS: pembayaran dikonfirmasi penjual
+  | 'menunggu_konfirmasi_seller'   // COD: menunggu konfirmasi seller
   | 'diproses'
   | 'dikirim'
   | 'selesai';
