@@ -44,22 +44,23 @@ function InnerForm({ redirectTo }: { redirectTo?: string }) {
       if (error) throw error;
       push('Berhasil masuk!', 'success');
 
-      // Kirim notifikasi Telegram login (backend, tanpa data sensitif)
-      try {
-        await fetch('/api/notify/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: email.trim(),
-            time: new Date().toISOString(),
-          }),
-        });
-      } catch {
+      // Kirim notifikasi Telegram login (fire-and-forget, tidak menunda
+      // redirect & tidak menambah beban rate-limit).
+      fetch('/api/notify/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email.trim(),
+          time: new Date().toISOString(),
+        }),
+      }).catch(() => {
         // opsional, jangan blokir login
-      }
+      });
 
-      router.push(redirectTo || '/dashboard');
-      router.refresh();
+      // Gunakan replace (bukan push) agar tidak menumpuk history, dan
+      // jangan router.refresh() yang memicu re-fetch seluruh route tree
+      // (penyebab request berlebihan ke Supabase).
+      router.replace(redirectTo || '/dashboard');
     } catch (error: any) {
       setErr(error?.message || 'Email atau password salah');
     } finally {
