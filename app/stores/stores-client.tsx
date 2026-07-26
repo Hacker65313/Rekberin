@@ -6,7 +6,6 @@ import Link from 'next/link';
 import Image from 'next/image';
 import type { Store } from '@/lib/types';
 import { StoreCardSkeleton } from '@/components/Skeleton';
-import { createClient } from '@/lib/supabase/client';
 
 export default function StoresClient({
   stores,
