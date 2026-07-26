@@ -2,29 +2,19 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import type { User } from '@supabase/supabase-js';
+import { useUser } from '@/lib/useUser';
 import { cn } from '@/lib/utils';
 
 export default function Navbar() {
   const pathname = usePathname();
-  const [user, setUser] = useState<User | null>(null);
+  const { user, loading } = useUser();
   const [menuOpen, setMenuOpen] = useState(false);
-
-  useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      setUser(session?.user ?? null);
-    });
-    return () => sub.subscription.unsubscribe();
-  }, []);
 
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
-    setUser(null);
     setMenuOpen(false);
     window.location.href = '/';
   };
@@ -43,6 +33,9 @@ export default function Navbar() {
       {label}
     </Link>
   );
+
+  // Render placeholder selama loading untuk menghindari hydration mismatch.
+  const showAuth = !loading;
 
   return (
     <header className="sticky top-0 z-40 border-b border-gray-100 bg-white/80 backdrop-blur-md">
@@ -65,12 +58,12 @@ export default function Navbar() {
         <div className="hidden items-center gap-1 md:flex">
           {navLink('/', 'Beranda')}
           {navLink('/stores', 'Jelajah Toko')}
-          {user && navLink('/dashboard', 'Dashboard')}
-          {user && navLink('/dashboard/products', 'Produk Saya')}
+          {showAuth && user && navLink('/dashboard', 'Dashboard')}
+          {showAuth && user && navLink('/dashboard/products', 'Produk Saya')}
         </div>
 
         <div className="flex items-center gap-2">
-          {user ? (
+          {showAuth && user ? (
             <>
               <Link href="/dashboard" className="hidden btn-ghost sm:inline-flex">
                 Dashboard
@@ -79,7 +72,7 @@ export default function Navbar() {
                 Logout
               </button>
             </>
-          ) : (
+          ) : showAuth ? (
             <>
               <Link href="/login" className="btn-outline px-4 py-2 text-xs">
                 Masuk
@@ -88,6 +81,8 @@ export default function Navbar() {
                 Daftar
               </Link>
             </>
+          ) : (
+            <div className="h-8 w-24" />
           )}
           <button
             className="rounded-xl p-2 text-gray-600 hover:bg-gray-100 md:hidden"
@@ -99,14 +94,14 @@ export default function Navbar() {
                 <path d="M6 6l12 12M6 18L18 6" />
               ) : (
                 <path d="M4 6h16M4 12h16M4 18h16" />
-            )}
+              )}
             </svg>
           </button>
         </div>
       </nav>
 
       {/* Mobile menu */}
-      {menuOpen && (
+      {showAuth && menuOpen && (
         <div className="border-t border-gray-100 bg-white px-4 py-3 md:hidden">
           <div className="flex flex-col gap-1">
             {navLink('/', 'Beranda')}

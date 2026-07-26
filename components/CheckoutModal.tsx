@@ -104,21 +104,27 @@ export default function CheckoutModal({
     setSubmitting(true);
     try {
       const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      // getSession() cukup untuk dapat user id (dari cache lokal, tidak
+      // network call). Mengurangi beban request saat checkout.
+      const { data: { session } } = await supabase.auth.getSession();
 
       const { data, error } = await supabase
         .from('orders')
         .insert({
           store_id: store.id,
           product_id: product.id,
-          buyer_id: user?.id || null,
+          buyer_id: session?.user?.id || null,
           quantity: qty,
           total_amount: total,
           payment_method: method,
           shipping_courier: courier,
           shipping_cost: shippingCost,
           admin_fee: adminFee,
-          status: 'menunggu_pembayaran' as OrderStatus,
+          // COD: penjual yang konfirmasi pesanan (tidak ada pembayaran di muka)
+          // Transfer/QRIS: pembeli bayar dulu, lalu menunggu pembayaran dikonfirmasi
+          status: (method === 'cod'
+            ? 'menunggu_konfirmasi_seller'
+            : 'menunggu_pembayaran') as OrderStatus,
           shipping_address: addr,
         })
         .select()
@@ -136,7 +142,7 @@ export default function CheckoutModal({
             storeName: store.name,
             productName: product.name,
             amount: total,
-            status: 'menunggu_pembayaran',
+            status: method === 'cod' ? 'menunggu_konfirmasi_seller' : 'menunggu_pembayaran',
             paymentMethod: paymentLabel(method),
             courier,
             shippingCost,
@@ -452,20 +458,27 @@ export default function CheckoutModal({
             </motion.div>
             <h3 className="mt-4 text-xl font-bold text-gray-900">Pesanan Dibuat!</h3>
             <p className="mt-2 text-sm text-gray-500">
-              Status pesanan: <span className="font-semibold text-amber-600">Menunggu Pembayaran</span>
+              Status pesanan:{' '}
+              <span className="font-semibold text-amber-600">
+                {method === 'cod' ? 'Menunggu Konfirmasi Seller' : 'Menunggu Pembayaran'}
+              </span>
             </p>
             <p className="mt-2 text-sm text-gray-600">
               Produk <span className="font-semibold text-gray-800">{product.name}</span> telah dipesan.
               Metode pembayaran: <span className="font-semibold">{paymentLabel(method)}</span>.
             </p>
             <p className="mt-2 text-sm text-gray-500">
-              Silakan cek email Anda untuk melanjutkan transaksi.
+              {method === 'cod'
+                ? 'Penjual akan mengkonfirmasi pesanan Anda. Bayar di tempat saat barang tiba.'
+                : 'Silakan transfer ke rekening penjual, lalu hubungi penjual untuk konfirmasi pembayaran.'}
             </p>
             {orderId && (
               <p className="mt-2 text-xs text-gray-400">ID: <code>{orderId.slice(0, 8)}</code></p>
             )}
             <p className="mt-3 max-w-xs text-xs text-gray-400">
-              Penjual akan memproses pesanan Anda. Status akan berubah menjadi Lunas → Diproses → Dikirim → Selesai.
+              {method === 'cod'
+                ? 'Alur: Menunggu Konfirmasi Seller → Diproses → Dikirim → Selesai.'
+                : 'Alur: Menunggu Pembayaran → Pembayaran Dikonfirmasi → Diproses → Dikirim → Selesai.'}
             </p>
             <button onClick={onClose} className="btn-primary mt-6 w-full">Selesai</button>
           </div>
