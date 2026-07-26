@@ -157,7 +157,7 @@ create table if not exists public.orders (
   shipping_courier text,
   shipping_cost bigint not null default 0,
   admin_fee bigint not null default 0,
-  status text not null default 'menunggu_pembayaran' check (status in ('menunggu_pembayaran','lunas','diproses','dikirim','selesai')),
+  status text not null default 'menunggu_pembayaran' check (status in ('menunggu_pembayaran','pembayaran_dikonfirmasi','menunggu_konfirmasi_seller','diproses','dikirim','selesai')),
   shipping_address jsonb not null,
   created_at timestamptz not null default now()
 );
@@ -174,6 +174,26 @@ begin
   if not exists (select 1 from information_schema.columns where table_name='orders' and column_name='admin_fee') then
     alter table public.orders add column admin_fee bigint not null default 0;
   end if;
+end$$;
+
+-- ALTER: perbarui CHECK constraint status agar menerima status baru
+-- (menunggu_konfirmasi_seller untuk COD, pembayaran_dikonfirmasi untuk Transfer/QRIS)
+do $$
+begin
+  -- Drop constraint lama jika ada, lalu buat ulang dengan daftar status baru
+  if exists (
+    select 1 from pg_constraint
+    where conname = 'orders_status_check'
+      and conrelid = 'public.orders'::regclass
+  ) then
+    alter table public.orders drop constraint orders_status_check;
+  end if;
+  alter table public.orders
+    add constraint orders_status_check
+    check (status in ('menunggu_pembayaran','pembayaran_dikonfirmasi','menunggu_konfirmasi_seller','diproses','dikirim','selesai'));
+exception when others then
+  -- Jika constraint sudah sesuai / tabel belum ada, abaikan
+  null;
 end$$;
 
 alter table public.orders enable row level security;
