@@ -59,27 +59,25 @@ function InnerForm() {
       });
       if (error) throw error;
 
-      // Kirim notifikasi Telegram (route handler, tanpa data sensitif)
-      try {
-        await fetch('/api/notify/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: form.email.trim(),
-            time: new Date().toISOString(),
-          }),
-        });
-      } catch {
+      // Kirim notifikasi Telegram (fire-and-forget, tidak menunda redirect)
+      fetch('/api/notify/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: form.email.trim(),
+          time: new Date().toISOString(),
+        }),
+      }).catch(() => {
         // opsional, jangan blokir registrasi
-      }
+      });
 
       if (data.session) {
         push('Pendaftaran berhasil! Selamat datang 🎉', 'success');
-        router.push('/dashboard');
-        router.refresh();
+        // replace (bukan push + refresh) untuk minimalkan request ulang.
+        router.replace('/dashboard');
       } else {
         push('Cek email Anda untuk konfirmasi (jika diperlukan).', 'info');
-        router.push('/login');
+        router.replace('/login');
       }
     } catch (error: any) {
       setErr(error?.message || 'Gagal mendaftar');
