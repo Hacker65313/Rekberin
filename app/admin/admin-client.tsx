@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { formatRupiah, formatDate, cn } from '@/lib/utils';
-import type { Order, OrderStatus, Product, Store } from '@/lib/types';
+import type { Order, OrderStatus, Product, Store, PaymentMethod } from '@/lib/types';
 import { ToastProvider, useToast } from '@/components/Toast';
 
 interface Props {
@@ -14,20 +14,35 @@ interface Props {
   email: string;
 }
 
-const STATUS_FLOW: OrderStatus[] = ['menunggu_pembayaran', 'lunas', 'diproses', 'dikirim', 'selesai'];
+// Admin dapat mengubah ke semua status yang ada.
+const STATUS_FLOW: OrderStatus[] = [
+  'menunggu_pembayaran',
+  'pembayaran_dikonfirmasi',
+  'menunggu_konfirmasi_seller',
+  'diproses',
+  'dikirim',
+  'selesai',
+];
 const STATUS_LABEL: Record<OrderStatus, string> = {
   menunggu_pembayaran: 'Menunggu Pembayaran',
-  lunas: 'Lunas',
+  pembayaran_dikonfirmasi: 'Pembayaran Dikonfirmasi',
+  menunggu_konfirmasi_seller: 'Menunggu Konfirmasi Seller',
   diproses: 'Diproses',
   dikirim: 'Dikirim',
   selesai: 'Selesai',
 };
 const STATUS_COLOR: Record<OrderStatus, string> = {
   menunggu_pembayaran: 'bg-amber-100 text-amber-700',
-  lunas: 'bg-blue-100 text-blue-700',
+  pembayaran_dikonfirmasi: 'bg-blue-100 text-blue-700',
+  menunggu_konfirmasi_seller: 'bg-amber-100 text-amber-700',
   diproses: 'bg-purple-100 text-purple-700',
   dikirim: 'bg-cyan-100 text-cyan-700',
   selesai: 'bg-emerald-100 text-emerald-700',
+};
+const PAYMENT_LABEL: Record<PaymentMethod, string> = {
+  transfer_bank: 'Transfer Bank',
+  qris: 'QRIS',
+  cod: 'COD (Bayar di Tempat)',
 };
 
 export default function AdminPanel({ stats, recentOrders, recentUsers, email }: Props) {
@@ -161,7 +176,7 @@ function OrderRow({ order }: { order: Order & { product?: Product; store?: { nam
         </div>
         <div className="text-right">
           <div className="font-bold text-brand-600">{formatRupiah(order.total_amount)}</div>
-          <div className="text-xs uppercase text-gray-400">{order.payment_method.replace('_', ' ')}</div>
+          <div className="text-xs text-gray-400">{PAYMENT_LABEL[order.payment_method as PaymentMethod] || order.payment_method}</div>
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
