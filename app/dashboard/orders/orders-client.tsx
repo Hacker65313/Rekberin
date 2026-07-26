@@ -3,12 +3,22 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { formatRupiah, formatDate, cn } from '@/lib/utils';
-import type { Store, Order, OrderStatus, Product } from '@/lib/types';
+import type { Store, Order, OrderStatus, Product, PaymentMethod } from '@/lib/types';
 import { useToast } from '@/components/Toast';
 
-const STATUS_FLOW: OrderStatus[] = [
+// Alur status berbeda untuk COD vs Transfer/QRIS:
+//  - COD:                menunggu_konfirmasi_seller → diproses → dikirim → selesai
+//  - Transfer Bank/QRIS: menunggu_pembayaran → pembayaran_dikonfirmasi → diproses → dikirim → selesai
+const STATUS_FLOW_COD: OrderStatus[] = [
+  'menunggu_konfirmasi_seller',
+  'diproses',
+  'dikirim',
+  'selesai',
+];
+
+const STATUS_FLOW_TRANSFER: OrderStatus[] = [
   'menunggu_pembayaran',
-  'lunas',
+  'pembayaran_dikonfirmasi',
   'diproses',
   'dikirim',
   'selesai',
@@ -16,7 +26,8 @@ const STATUS_FLOW: OrderStatus[] = [
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
   menunggu_pembayaran: 'Menunggu Pembayaran',
-  lunas: 'Lunas',
+  pembayaran_dikonfirmasi: 'Pembayaran Dikonfirmasi',
+  menunggu_konfirmasi_seller: 'Menunggu Konfirmasi Seller',
   diproses: 'Diproses',
   dikirim: 'Dikirim',
   selesai: 'Selesai',
@@ -24,11 +35,22 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
 
 const STATUS_COLOR: Record<OrderStatus, string> = {
   menunggu_pembayaran: 'bg-amber-100 text-amber-700',
-  lunas: 'bg-blue-100 text-blue-700',
+  pembayaran_dikonfirmasi: 'bg-blue-100 text-blue-700',
+  menunggu_konfirmasi_seller: 'bg-amber-100 text-amber-700',
   diproses: 'bg-purple-100 text-purple-700',
   dikirim: 'bg-cyan-100 text-cyan-700',
   selesai: 'bg-emerald-100 text-emerald-700',
 };
+
+const PAYMENT_LABEL: Record<PaymentMethod, string> = {
+  transfer_bank: 'Transfer Bank',
+  qris: 'QRIS',
+  cod: 'COD (Bayar di Tempat)',
+};
+
+function statusFlowFor(method: string): OrderStatus[] {
+  return method === 'cod' ? STATUS_FLOW_COD : STATUS_FLOW_TRANSFER;
+}
 
 export default function OrdersClient({
   orders,
@@ -80,6 +102,7 @@ export default function OrdersClient({
       <div className="mt-6 space-y-4">
         {orders.map((o) => {
           const addr = o.shipping_address || ({} as any);
+          const flow = statusFlowFor(o.payment_method);
           return (
             <div key={o.id} className="card p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -100,8 +123,8 @@ export default function OrdersClient({
                   <div className="text-lg font-bold text-brand-600">
                     {formatRupiah(o.total_amount)}
                   </div>
-                  <div className="text-xs text-gray-400 uppercase">
-                    {o.payment_method.replace('_', ' ')}
+                  <div className="text-xs text-gray-400">
+                    {PAYMENT_LABEL[o.payment_method as PaymentMethod] || o.payment_method}
                   </div>
                 </div>
               </div>
@@ -118,15 +141,21 @@ export default function OrdersClient({
                 <div className="sm:col-span-2">
                   <span className="text-gray-400">Alamat:</span>{' '}
                   <span className="font-medium text-gray-700">
-                    {addr.address}, {addr.city}, {addr.province} {addr.postal_code}
+                    {addr.address}, {addr.district}, {addr.city}, {addr.province} {addr.postal_code}
                   </span>
                 </div>
+                {o.shipping_courier && (
+                  <div className="sm:col-span-2">
+                    <span className="text-gray-400">Kurir:</span>{' '}
+                    <span className="font-medium text-gray-700 uppercase">{o.shipping_courier}</span>
+                  </div>
+                )}
               </div>
 
               <div className="mt-4">
                 <label className="label">Ubah Status</label>
                 <div className="flex flex-wrap gap-2">
-                  {STATUS_FLOW.map((s) => (
+                  {flow.map((s) => (
                     <button
                       key={s}
                       onClick={() => updateStatus(o.id, s)}
@@ -143,6 +172,11 @@ export default function OrdersClient({
                     </button>
                   ))}
                 </div>
+                <p className="mt-2 text-xs text-gray-400">
+                  {o.payment_method === 'cod'
+                    ? 'Alur COD: konfirmasi pesanan → diproses → dikirim → selesai.'
+                    : 'Alur Transfer/QRIS: konfirmasi pembayaran → diproses → dikirim → selesai.'}
+                </p>
               </div>
             </div>
           );
